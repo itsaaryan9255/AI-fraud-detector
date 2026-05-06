@@ -6,7 +6,16 @@ import pandas as pd
 import streamlit as st
 
 from src.data import generate_synthetic_fraud_data, load_data, split_features_target
-from src.model import evaluate_model, load_model, save_model, train_model, train_test_split_data
+from src.clustering import (
+    analyze_cluster_composition,
+    evaluate_clusters,
+    fit_clusters,
+    load_clustering_model,
+    predict_cluster,
+    save_clustering_model,
+)
+from src.model import (evaluate_model, load_model, save_model, train_model,
+                       train_test_split_data)
 
 
 MODEL_PATH = "models/fraud_detector.joblib"
@@ -57,7 +66,7 @@ def main() -> None:
     )
 
     st.sidebar.header("Workflow")
-    mode = st.sidebar.radio("Select mode", ["Generate Data", "Train Model", "Evaluate Model", "Predict"])
+    mode = st.sidebar.radio("Select mode", ["Generate Data", "Train Model", "Evaluate Model", "Predict", "Cluster Analysis"])
 
     default_model_path = st.sidebar.text_input("Model path", MODEL_PATH)
     default_data_path = st.sidebar.text_input("Data path", DATA_PATH)
@@ -144,6 +153,27 @@ def main() -> None:
                     prediction = model.predict([feature_values])[0]
                     label = "Fraud" if int(prediction) == 1 else "Legitimate"
                     st.write(f"### Prediction: {label} ({int(prediction)})")
+
+    if mode == "Cluster Analysis":
+        if dataset is None or dataset.empty:
+            st.warning("Provide a dataset for clustering analysis.")
+        elif "is_fraud" not in dataset.columns:
+            st.error("Dataset must contain an 'is_fraud' target column for cluster composition analysis.")
+        else:
+            n_clusters = st.sidebar.slider("Number of clusters", min_value=2, max_value=10, value=2, step=1)
+            clustering_model_path = st.sidebar.text_input("Clustering model path", "models/clustering_model.joblib")
+            if st.button("Fit clusters"):
+                X, y = split_features_target(dataset)
+                clustering_model = fit_clusters(X, n_clusters=n_clusters)
+                save_clustering_model(clustering_model, clustering_model_path)
+                st.success(f"Clustering model saved to {clustering_model_path}")
+                metrics = evaluate_clusters(clustering_model, X)
+                st.subheader("Clustering evaluation")
+                st.json(metrics)
+                composition = analyze_cluster_composition(X, y, clustering_model)
+                st.subheader("Cluster composition")
+                for cluster, info in composition.items():
+                    st.write(f"**{cluster}**: {info['total_samples']} samples, {info['fraud_samples']} fraud ({info['fraud_ratio']:.2%})")
 
     st.sidebar.markdown("---")
     st.sidebar.write("Built with Streamlit for rapid fraud model prototyping.")
